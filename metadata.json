@@ -1,0 +1,6 @@
+{
+  "name": "Setupss",
+  "description": "Geliştirici, tasarımcı ve oyuncular için masa düzenleri (setup), donanım ve ekipman bileşenleri paylaşım platformu ve yapay zeka destekli bütçe planlama atölyesi.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

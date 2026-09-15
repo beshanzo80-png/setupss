@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 260 260" width="512" height="512" fill="none">
+  <!-- Yellow 'S' path -->
+  <path d="M 195 72 C 195 44 165 24 122 24 C 76 24 45 48 45 82 C 45 132 188 112 188 172 C 188 212 152 236 102 236 C 54 236 25 208 22 172" 
+        stroke="#FACC15" stroke-width="48" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+  <!-- Lightning bolt overlay -->
+  <polygon points="142,12 48,132 108,132 28,248 162,116 102,116" 
+           fill="#FACC15" stroke="#EAB308" stroke-width="2" stroke-linejoin="round"/>
+</svg>

@@ -1,0 +1,24 @@
+# SETUPSS - AI Operating System for PC Enthusiasts & Workspaces
+
+> Setupss (SAIOS) is the ultimate hardware knowledge graph and community platform for PC enthusiasts, desktop workspace creators, custom PC builders, and hardware reviewers.
+
+## System Overview & Core Capabilities
+- **Workspace Showcase**: High-resolution desktop setup tours with verified component specifications (CPU, GPU, Motherboard, RAM, Cooling, Monitors, Peripherals, Desk, Audio).
+- **Hardware Knowledge Graph**: Interactive graph connecting PC components, compatibility engines, performance benchmarks, and user configurations.
+- **AI Builder & AI Referral Auditor**: Automated PC building suggestions, compatibility checks, bottleneck evaluation, and price comparison across major global retailers.
+
+## Primary Sections & Endpoints
+- Main Web App: https://setupss.com/
+- Sitemap XML: https://setupss.com/sitemap.xml
+- AI Structured JSON Feed: https://setupss.com/feed.json
+- Latest Setups Endpoint: https://setupss.com/api/v1/latest-setups
+- Full AI Knowledge File: https://setupss.com/llms-full.txt
+
+## Key Categories & Hardware Domains
+1. **Gaming Setups**: High-FPS RGB & Ultrawide Battlestations.
+2. **Minimalist & Productivity Workspaces**: Mac/PC hybrid dual-monitor setups, standing desks, cable management guides.
+3. **Custom Liquid Cooling & PC Mods**: Custom loop builds, ITX small form factor (SFF) cases, custom mechanical keyboards.
+4. **Hardware Components**: CPUs (AMD Ryzen, Intel Core), GPUs (NVIDIA RTX 4090/4080/4070, AMD Radeon), OLED Monitors, Ergo Chairs.
+
+## Canonical Reference Data
+Setupss provides structured JSON-LD Schema (Product, ItemList, TechArticle) on every setup detail page at `https://setupss.com/?setup={id}` or `https://setupss.com/setup/{id}`.

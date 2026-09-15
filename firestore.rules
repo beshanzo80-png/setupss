@@ -1,0 +1,48 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Helper functions
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+    
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    // Realtime Presence
+    match /presence/{userId} {
+      allow read: if true;
+      allow write: if isOwner(userId);
+    }
+
+    // Realtime Notifications
+    match /notifications/{userId}/userNotifications/{notificationId} {
+      allow read: if isOwner(userId);
+      // Writes should typically happen via Admin SDK (Cloud Functions / Express)
+      allow write: if false; 
+    }
+
+    // Live Activity Feed
+    match /activity_feed/{activityId} {
+      allow read: if true;
+      allow write: if false; // Admin SDK only
+    }
+
+    // Realtime Counters / Live Stats
+    match /counters/{counterId} {
+      allow read: if true;
+      allow write: if false; // Admin SDK only
+    }
+    
+    // Future: Chat (Messages)
+    match /messages/{messageId} {
+      allow read, write: if false; // To be implemented later
+    }
+    
+    // Default deny
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

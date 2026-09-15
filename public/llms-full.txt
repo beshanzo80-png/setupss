@@ -1,0 +1,39 @@
+# SETUPSS (SAIOS v2.0) - Comprehensive Hardware & Workspace Intelligence Manifest
+
+## About Setupss
+Setupss (https://setupss.com) is a unified hardware knowledge graph and social ecosystem for PC builders, setup architects, and tech enthusiasts. It combines component specs, verified user setups, benchmark insights, and automated AI assistance.
+
+## Key System Architecture & Entities
+
+### 1. Setups & Workspaces (Masaüstü & PC Kurulumları)
+Each setup in Setupss contains:
+- Verified High-Res Media (Primary photo, multi-angle gallery, video tours)
+- Itemized Hardware Specs Sheet:
+  - Processor / CPU (e.g., AMD Ryzen 7 7800X3D, Intel Core i9-14900K)
+  - Graphics Card / GPU (e.g., NVIDIA GeForce RTX 4080 Super, RTX 4090)
+  - Memory / RAM & Storage (DDR5, PCIe Gen 4/5 NVMe SSDs)
+  - Motherboard, Power Supply (PSU), Case, Cooling
+  - Desk & Furniture (Standing Desks, Ergonomic Chairs, Cable Management)
+  - Display & Audio (OLED 240Hz Monitors, Studio Monitors, Mechanical Keyboards)
+
+### 2. Hardware Knowledge Graph Engine
+Setupss links every hardware component directly to verified setups using it. This allows users and AI agents to query:
+- "Which CPUs are most frequently paired with RTX 4080 Super in minimalist setups?"
+- "What standing desks support triple 32-inch monitor arms?"
+- "Real-world user setups featuring ITX SFF cases with 360mm AIO liquid coolers."
+
+### 3. Interactive Tools & Calculators
+Setupss provides embedded calculation utilities:
+- **Bottleneck & Performance Auditor**: Estimates CPU-GPU throughput bottleneck percentage across 1080p, 1440p, and 4K resolutions.
+- **Power & Thermal Budget Simulator**: Recommends PSU wattage and thermal cooling requirements for target builds.
+- **Desk & Ergonomics Uptime Planner**: Calculates ideal desk height, eye-level monitor distance, and desk depth for multi-monitor setups.
+
+### 4. API Endpoints for AI & Data Crawlers
+- `GET https://setupss.com/feed.json`: Machine-readable JSON feed containing recent setups, full hardware arrays, and absolute image URIs.
+- `GET https://setupss.com/api/v1/latest-setups`: Paginated JSON array of curated setups with full JSON-LD schema metadata.
+- `GET https://setupss.com/sitemap.xml`: Complete XML sitemap updated daily.
+
+## Contact & Platform Ownership
+- Website: https://setupss.com
+- Platform: Setupss AI Operating System (SAIOS)
+- Social & Community: Twitter/X (@setupss)

@@ -1,0 +1,160 @@
+@import url('https://fonts.googleapis.com/css2?family=Caveat:wght@400..700&family=Playfair+Display:ital,wght@0,400..900;1,400..900&family=Plus+Jakarta+Sans:ital,wght@0,200..800;1,200..800&display=swap');
+@import "tailwindcss";
+@plugin "@tailwindcss/typography";
+
+@theme {
+  --font-sans: "Plus Jakarta Sans", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, monospace;
+  --font-handwriting: "Caveat", cursive;
+  --font-serif: "Playfair Display", Georgia, serif;
+  --font-elegant-sans: "Plus Jakarta Sans", sans-serif;
+
+  --color-vibrant-bg: #FFF8E1;
+  --color-vibrant-dark: #2D3436;
+  --color-vibrant-yellow: #FFD93D;
+  --color-vibrant-teal: #4ECDC4;
+  --color-vibrant-coral: #FF6B6B;
+  --color-vibrant-light-yellow: #FFEAA7;
+  --color-vibrant-orange: #FDCB6E;
+  --color-vibrant-peach: #FAB1A0;
+  --color-vibrant-cyan: #81ECEC;
+  --color-vibrant-blue: #0984e3;
+}
+
+/* Base Theme & Scrollbar */
+html {
+  transition: background-color 0.2s ease, color 0.2s ease;
+  background-color: #FFF8E1;
+  color: #2D3436;
+}
+
+/* Form Input & Select High-Contrast Text Color Defaults */
+input, select, textarea {
+  color: #2D3436 !important;
+}
+
+input::placeholder, textarea::placeholder {
+  color: #94A3B8 !important;
+  opacity: 1 !important;
+}
+
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-track {
+  background: rgba(45, 52, 54, 0.08);
+  border-radius: 9999px;
+}
+::-webkit-scrollbar-thumb {
+  background: #FF6B6B;
+  border: 2px solid #2D3436;
+  border-radius: 9999px;
+}
+
+::-webkit-scrollbar-thumb:hover,
+::-webkit-scrollbar-thumb:active {
+  background: #FFD93D;
+}
+
+.custom-scrollbar::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+.custom-scrollbar::-webkit-scrollbar-track {
+  background: rgba(255, 234, 167, 0.5);
+  border: 1px solid rgba(45, 52, 54, 0.2);
+  border-radius: 9999px;
+}
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background: #FF6B6B;
+  border: 2px solid #2D3436;
+  border-radius: 9999px;
+}
+
+
+/* Neo-Brutalist custom helper classes */
+.neo-border {
+  border: 3px solid #2D3436;
+}
+
+.neo-border-thick {
+  border: 4px solid #2D3436;
+}
+
+.neo-border-thin {
+  border: 2px solid #2D3436;
+}
+
+.neo-shadow-sm {
+  box-shadow: 4px 4px 0px 0px rgba(45,52,54,1);
+}
+
+.neo-shadow-md {
+  box-shadow: 6px 6px 0px 0px rgba(45,52,54,1);
+}
+
+.neo-shadow-lg {
+  box-shadow: 8px 8px 0px 0px rgba(45,52,54,1);
+}
+
+.neo-shadow-teal {
+  box-shadow: 8px 8px 0px 0px rgba(78,205,196,1);
+}
+.neo-shadow-yellow {
+  box-shadow: 8px 8px 0px 0px rgba(255,217,61,1);
+}
+.neo-shadow-coral {
+  box-shadow: 8px 8px 0px 0px rgba(255,107,107,1);
+}
+
+.neo-btn-transition {
+  transition: all 0.15s ease-in-out;
+}
+.neo-btn-transition:hover {
+  transform: translate(2px, 2px);
+  box-shadow: 2px 2px 0px 0px rgba(45,52,54,1);
+}
+.neo-btn-transition:active {
+  transform: translate(4px, 4px);
+  box-shadow: 0px 0px 0px 0px rgba(45,52,54,1);
+}
+
+@keyframes rgbGlow {
+  0% { border-color: #ff6b6b; box-shadow: 0 0 30px rgba(255,107,107,0.7), 10px 10px 0px 0px rgba(45,52,54,1); }
+  33% { border-color: #4ecdc4; box-shadow: 0 0 30px rgba(78,205,196,0.7), 10px 10px 0px 0px rgba(45,52,54,1); }
+  66% { border-color: #ffd93d; box-shadow: 0 0 30px rgba(255,217,61,0.7), 10px 10px 0px 0px rgba(45,52,54,1); }
+  100% { border-color: #ff6b6b; box-shadow: 0 0 30px rgba(255,107,107,0.7), 10px 10px 0px 0px rgba(45,52,54,1); }
+}
+
+@keyframes rgbText {
+  0% { color: #ff6b6b; }
+  33% { color: #4ecdc4; }
+  66% { color: #ffd93d; }
+  100% { color: #ff6b6b; }
+}
+
+.rgb-modal-border {
+  animation: rgbGlow 3s infinite ease-in-out;
+  border-style: solid;
+}
+
+.rgb-text {
+  animation: rgbText 3s infinite linear;
+  font-weight: 900 !important;
+}
+
+@keyframes bounce-subtle {
+  0%, 100% {
+    transform: translateY(-5%);
+    animation-timing-function: cubic-bezier(0.8, 0, 1, 1);
+  }
+  50% {
+    transform: translateY(0);
+    animation-timing-function: cubic-bezier(0, 0, 0.2, 1);
+  }
+}
+
+.animate-bounce-subtle {
+  animation: bounce-subtle 2s infinite;
+}
