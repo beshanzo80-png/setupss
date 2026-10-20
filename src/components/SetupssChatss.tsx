@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { io, Socket } from 'socket.io-client';
+import { supabase } from '../lib/supabase';
 import { 
   Video, Mic, MicOff, VideoOff, PhoneOff, Send, Users, 
   Link as LinkIcon, Smile, Image as ImageIcon, Sparkles, 
@@ -70,7 +70,7 @@ export function SetupssChatss({ currentUser }: ChatssProps) {
   const [localStream, setLocalStream] = useState<MediaStream | null>(null);
   const [peers, setPeers] = useState<{ [id: string]: { stream: MediaStream, details: any } }>({});
   const [messages, setMessages] = useState<any[]>([]);
-  const [roomUsers, setRoomUsers] = useState<any[]>([]); // [socketId, userDetails][]
+  const [roomUsers, setRoomUsers] = useState<any[]>([]); // [userId, userDetails][]
   const [chatInput, setChatInput] = useState('');
   const [showEmoji, setShowEmoji] = useState(false);
   
@@ -79,7 +79,8 @@ export function SetupssChatss({ currentUser }: ChatssProps) {
   const [copiedLink, setCopiedLink] = useState(false);
   const [copiedCode, setCopiedCode] = useState(false);
 
-  const socketRef = useRef<Socket | null>(null);
+  const channelRef = useRef<any>(null);
+  const mySessionId = useRef<string>(Math.random().toString(36).substring(2, 10)).current;
   const peerConnections = useRef<{ [id: string]: RTCPeerConnection }>({});
   const localVideoRef = useRef<HTMLVideoElement>(null);
   const chatEndRef = useRef<HTMLDivElement>(null);
@@ -101,79 +102,120 @@ export function SetupssChatss({ currentUser }: ChatssProps) {
     setAudioMuted(false);
     setVideoMuted(false);
 
-    if (socketRef.current) {
-      socketRef.current.emit("join-room", targetRoomId, currentUser.id, {
-        name: currentUser.name || currentUser.displayName,
-        avatar: currentUser.avatar || `https://api.dicebear.com/7.x/bottts/svg?seed=${currentUser.id}`
-      });
+    if (channelRef.current) {
+      supabase.removeChannel(channelRef.current);
+    }
+    
+    const channel = supabase.channel(`video_room_${targetRoomId}`, {
+      config: {
+        presence: {
+          key: mySessionId,
+        },
+      },
+    });
+    channelRef.current = channel;
 
-      // Clear existing listeners to prevent leaks
-      socketRef.current.off("user-joined");
-      socketRef.current.on("user-joined", async (socketId: string, userId: string, details: any) => {
-        const pc = createPeerConnection(socketId, stream, details);
-        if (stream) {
-          stream.getTracks().forEach(track => pc.addTrack(track, stream));
+    channel
+      .on('presence', { event: 'sync' }, () => {
+        const state = channel.presenceState();
+        const users = Object.entries(state).map(([key, presences]: any) => {
+          return [key, presences[0].userDetails];
+        });
+        setRoomUsers(users);
+      })
+      .on('presence', { event: 'join' }, ({ key, newPresences }) => {
+        const joinedId = key;
+        const details = newPresences[0].userDetails;
+        
+        if (joinedId !== mySessionId) {
+          const pc = createPeerConnection(joinedId, stream, details);
+          if (stream) {
+            stream.getTracks().forEach(track => pc.addTrack(track, stream));
+          }
+          pc.createOffer().then(offer => {
+            return pc.setLocalDescription(offer).then(() => {
+              channel.send({
+                type: 'broadcast',
+                event: 'offer',
+                payload: { target: joinedId, offer, sender: mySessionId, details: { name: currentUser.name, avatar: currentUser.avatar } }
+              });
+            });
+          }).catch(err => console.error("WebRTC offer error:", err));
         }
-        try {
-          const offer = await pc.createOffer();
-          await pc.setLocalDescription(offer);
-          socketRef.current?.emit("offer", socketId, offer);
-        } catch (err) {
-          console.error("WebRTC offer hatası:", err);
+      })
+      .on('presence', { event: 'leave' }, ({ key }) => {
+        const leftId = key;
+        if (peerConnections.current[leftId]) {
+          peerConnections.current[leftId].close();
+          delete peerConnections.current[leftId];
         }
-      });
-
-      socketRef.current.off("offer");
-      socketRef.current.on("offer", async (socketId: string, offer: any) => {
-        const pc = createPeerConnection(socketId, stream, { name: "Bağlanıyor..." });
+        setPeers(prev => {
+          const next = { ...prev };
+          delete next[leftId];
+          return next;
+        });
+      })
+      .on('broadcast', { event: 'offer' }, async ({ payload }) => {
+        if (payload.target !== mySessionId) return;
+        const pc = createPeerConnection(payload.sender, stream, payload.details);
         try {
-          await pc.setRemoteDescription(new RTCSessionDescription(offer));
+          await pc.setRemoteDescription(new RTCSessionDescription(payload.offer));
           if (stream) {
             stream.getTracks().forEach(track => pc.addTrack(track, stream));
           }
           const answer = await pc.createAnswer();
           await pc.setLocalDescription(answer);
-          socketRef.current?.emit("answer", socketId, answer);
+          channel.send({
+            type: 'broadcast',
+            event: 'answer',
+            payload: { target: payload.sender, answer, sender: mySessionId }
+          });
         } catch (err) {
-          console.error("WebRTC offer işleme hatası:", err);
+          console.error("WebRTC offer process error:", err);
         }
-      });
-
-      socketRef.current.off("answer");
-      socketRef.current.on("answer", async (socketId: string, answer: any) => {
-        const pc = peerConnections.current[socketId];
+      })
+      .on('broadcast', { event: 'answer' }, async ({ payload }) => {
+        if (payload.target !== mySessionId) return;
+        const pc = peerConnections.current[payload.sender];
         if (pc) {
-          try {
-            await pc.setRemoteDescription(new RTCSessionDescription(answer));
-          } catch (err) {
-            console.error("WebRTC answer işleme hatası:", err);
-          }
+          await pc.setRemoteDescription(new RTCSessionDescription(payload.answer));
         }
-      });
-
-      socketRef.current.off("ice-candidate");
-      socketRef.current.on("ice-candidate", (socketId: string, candidate: any) => {
-        const pc = peerConnections.current[socketId];
+      })
+      .on('broadcast', { event: 'ice-candidate' }, ({ payload }) => {
+        if (payload.target !== mySessionId) return;
+        const pc = peerConnections.current[payload.sender];
         if (pc) {
-          pc.addIceCandidate(new RTCIceCandidate(candidate)).catch(err => {
-            console.error("ICE candidate ekleme hatası:", err);
+          pc.addIceCandidate(new RTCIceCandidate(payload.candidate));
+        }
+      })
+      .on('broadcast', { event: 'room-message' }, ({ payload }) => {
+        setMessages(prev => [...prev, payload]);
+      })
+      .on('broadcast', { event: 'update-media-state' }, ({ payload }) => {
+        setPeers(prev => {
+          if (!prev[payload.sender]) return prev;
+          return {
+            ...prev,
+            [payload.sender]: {
+              ...prev[payload.sender],
+              details: { ...prev[payload.sender].details, ...payload.state }
+            }
+          };
+        });
+      })
+      .subscribe(async (status) => {
+        if (status === 'SUBSCRIBED') {
+          await channel.track({
+            userDetails: {
+              userId: currentUser.id,
+              name: currentUser.name || currentUser.displayName,
+              avatar: currentUser.avatar || `https://api.dicebear.com/7.x/bottts/svg?seed=${currentUser.id}`,
+              audioMuted: false,
+              videoMuted: false
+            }
           });
         }
       });
-
-      socketRef.current.off("user-left");
-      socketRef.current.on("user-left", (socketId: string) => {
-        if (peerConnections.current[socketId]) {
-          peerConnections.current[socketId].close();
-          delete peerConnections.current[socketId];
-        }
-        setPeers(prev => {
-          const next = { ...prev };
-          delete next[socketId];
-          return next;
-        });
-      });
-    }
   };
 
   // Sync latest joinRoomDirect reference
@@ -194,44 +236,31 @@ export function SetupssChatss({ currentUser }: ChatssProps) {
     }
   }, [currentUser]);
 
-  // Initialize socket and lobby listeners on mount
+  // Initialize lobby
   useEffect(() => {
     if (!currentUser) return;
-
-    // Connect socket
-    const socket = io(window.location.origin, { path: "/socket.io" });
-    socketRef.current = socket;
-
-    // Join lobby room to receive room updates
-    socket.emit("join-lobby");
-
-    socket.on("rooms-update", (updatedRooms: ChatRoom[]) => {
-      setRooms(updatedRooms);
-    });
-
-    socket.on("room-created", (createdRoomId: string) => {
-      setShowCreateModal(false);
-      joinRoomDirectRef.current?.(createdRoomId);
-    });
-
-    socket.on("room-history", (history: any[]) => {
-      setMessages(history);
-    });
-
-    socket.on("room-message", (msg: any) => {
-      setMessages(prev => {
-        if (prev.some(m => m.id === msg.id)) return prev;
-        return [...prev, msg];
-      });
-    });
-
-    socket.on("room-users", (users: any[]) => {
-      setRoomUsers(users);
-    });
+    
+    // Fetch rooms from backend or use defaults
+    fetch('/api/v2/setups/rooms')
+       .then(res => res.json())
+       .then(data => {
+         if (data.success && data.rooms) {
+           setRooms(data.rooms);
+         }
+       })
+       .catch(err => {
+         const defaultRooms = [
+           { id: 'global', name: 'Global Sohbet', description: 'Tüm Setupss topluluğu genel sohbet odası', isPrivate: false, activeCount: 0 },
+           { id: 'hardware', name: 'Donanım & Setup Lounge', description: 'Ekran kartı, işlemci, kasa ve çevre birimi tartışmaları', isPrivate: false, activeCount: 0 },
+           { id: 'setup-critiques', name: 'Kurulum Puanlama', description: 'Kendi masanı ve kurulumunu puanlat!', isPrivate: false, activeCount: 0 },
+           { id: 'rgb-gaming', name: 'RGB Gaming & Yayın', description: 'Oyun performansları ve RGB aydınlatmaları', isPrivate: false, activeCount: 0 }
+         ];
+         setRooms(defaultRooms);
+       });
 
     return () => {
-      if (socket) {
-        socket.disconnect();
+      if (channelRef.current) {
+        // cleanup if needed
       }
     };
   }, [currentUser]);
@@ -313,7 +342,7 @@ export function SetupssChatss({ currentUser }: ChatssProps) {
         track.enabled = !targetMute;
       });
       setAudioMuted(targetMute);
-      socketRef.current?.emit("update-media-state", { audioMuted: targetMute, videoMuted });
+      channelRef.current?.send({ type: 'broadcast', event: 'update-media-state', payload: { sender: mySessionId, state: { audioMuted: targetMute, videoMuted } } });
     }
   };
 
@@ -324,11 +353,11 @@ export function SetupssChatss({ currentUser }: ChatssProps) {
         track.enabled = !targetMute;
       });
       setVideoMuted(targetMute);
-      socketRef.current?.emit("update-media-state", { audioMuted, videoMuted: targetMute });
+      channelRef.current?.send({ type: 'broadcast', event: 'update-media-state', payload: { sender: mySessionId, state: { audioMuted, videoMuted: targetMute } } });
     }
   };
 
-  const createPeerConnection = (socketId: string, stream: MediaStream | null, details: any) => {
+  const createPeerConnection = (peerId: string, stream: MediaStream | null, details: any) => {
     const pc = new RTCPeerConnection({
       iceServers: [
         { urls: "stun:stun.l.google.com:19302" },
@@ -337,18 +366,24 @@ export function SetupssChatss({ currentUser }: ChatssProps) {
       ]
     });
 
-    peerConnections.current[socketId] = pc;
+    peerConnections.current[peerId] = pc;
 
     pc.onicecandidate = (event) => {
       if (event.candidate) {
-        socketRef.current?.emit("ice-candidate", socketId, event.candidate);
+        if (channelRef.current) {
+        channelRef.current.send({
+          type: 'broadcast',
+          event: 'ice-candidate',
+          payload: { target: peerId, candidate: event.candidate, sender: mySessionId }
+        });
+      }
       }
     };
 
     pc.ontrack = (event) => {
       setPeers(prev => ({
         ...prev,
-        [socketId]: {
+        [peerId]: {
           stream: event.streams[0],
           details
         }
@@ -359,9 +394,7 @@ export function SetupssChatss({ currentUser }: ChatssProps) {
   };
 
   const leaveRoom = () => {
-    if (socketRef.current) {
-      socketRef.current.emit("get-rooms"); // Refresh lobby rooms list
-    }
+    
     Object.values(peerConnections.current).forEach(pc => pc.close());
     peerConnections.current = {};
     if (localStream) {
@@ -376,7 +409,7 @@ export function SetupssChatss({ currentUser }: ChatssProps) {
 
   const handleCreateRoomSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newRoomName.trim() || !socketRef.current) return;
+    if (!newRoomName.trim()) return;
 
     // Generate a unique room slug/id
     const generatedId = newRoomName.toLowerCase()
@@ -385,12 +418,12 @@ export function SetupssChatss({ currentUser }: ChatssProps) {
     
     const uniqueRoomId = `${generatedId}-${Math.floor(1000 + Math.random() * 9000)}`;
 
-    socketRef.current.emit("create-room", {
-      id: uniqueRoomId,
-      name: newRoomName,
-      description: newRoomDesc || `${newRoomName} sesli ve görüntülü sohbet odası`,
-      isPrivate: newRoomPrivate
-    });
+    // create room logic handled via rest now
+    fetch('/api/v2/setups/rooms', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: newRoomName, description: newRoomDesc, isPrivate })
+    }).catch(console.error);
 
     setNewRoomName('');
     setNewRoomDesc('');
@@ -399,7 +432,7 @@ export function SetupssChatss({ currentUser }: ChatssProps) {
 
   const sendMessage = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!chatInput.trim() || !socketRef.current) return;
+    if (!chatInput.trim() || !channelRef.current) return;
 
     const msg = {
       id: `msg-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
@@ -409,7 +442,8 @@ export function SetupssChatss({ currentUser }: ChatssProps) {
       avatar: currentUser.avatar || `https://api.dicebear.com/7.x/bottts/svg?seed=${currentUser.id}`,
       timestamp: new Date().toISOString()
     };
-    socketRef.current.emit("room-message", roomId, msg);
+    if(channelRef.current) channelRef.current.send({ type: 'broadcast', event: 'room-message', payload: msg });
+    setMessages(prev => [...prev, msg]);
 
     // Fallback: also persist message via REST endpoint for guaranteed delivery in serverless environments
     fetch(`/api/chat/rooms/${encodeURIComponent(roomId)}/messages`, {

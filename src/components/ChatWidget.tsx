@@ -8,6 +8,7 @@ import { ChatMessage } from '../types';
 import { SafeImage } from './SafeImage';
 import { AiAvatar } from './AiAvatar';
 import { UserAvatar } from './UserAvatar';
+import { supabase } from '../lib/supabase';
 import { 
   MessageSquare, Send, X, Search, Loader2, MessageCircle, AlertCircle, Sparkles, 
   UserPlus, Users, Check, Trash2, Image, Video, Code2 as Github, Camera as Instagram, Globe as Linkedin, 
@@ -82,7 +83,13 @@ export const ChatWidget: React.FC<ChatWidgetProps> = ({
     avatar: '/setupss_icon.svg?v=2026_v9'
   };
 
-  const socketRef = useRef<WebSocket | null>(null);
+  const channelRef = useRef<any>(null);
+  const activePartnerRef = useRef<any>(null);
+
+  useEffect(() => {
+    activePartnerRef.current = activePartner;
+  }, [activePartner]);
+
   const messagesContainerRef = useRef<HTMLDivElement | null>(null);
   const reconnectTimeoutRef = useRef<any>(null);
 
@@ -102,87 +109,70 @@ export const ChatWidget: React.FC<ChatWidgetProps> = ({
   const connectWebSocket = () => {
     if (!user) return;
 
-    if (socketRef.current) {
-      socketRef.current.close();
+    if (channelRef.current) {
+      supabase.removeChannel(channelRef.current);
     }
 
     setIsConnecting(true);
-    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const socketUrl = `${protocol}//${window.location.host}`;
 
-    try {
-      const ws = new WebSocket(socketUrl);
-      socketRef.current = ws;
+    const channel = supabase.channel(`private_chat_${user.id}`);
+    channelRef.current = channel;
 
-      ws.onopen = () => {
+    channel.on(
+      'postgres_changes',
+      { event: 'INSERT', schema: 'public', table: 'chat_messages', filter: `receiver_id=eq.${user.id}` },
+      (payload) => {
+        const newMsg = payload.new;
+        const incomingMsg = {
+          id: newMsg.id,
+          senderId: newMsg.sender_id,
+          senderName: newMsg.sender_name,
+          senderAvatar: newMsg.sender_avatar,
+          receiverId: newMsg.receiver_id,
+          receiverName: newMsg.receiver_name,
+          message: newMsg.message,
+          createdAt: newMsg.created_at,
+          isRead: newMsg.is_read,
+          senderHasRgb: newMsg.sender_has_rgb,
+          mediaUrl: newMsg.media_url,
+          mediaType: newMsg.media_type
+        };
+
+        if (activePartnerRef.current && 
+            ((incomingMsg.senderId === activePartnerRef.current.id && incomingMsg.receiverId === user.id) ||
+            (incomingMsg.senderId === user.id && incomingMsg.receiverId === activePartnerRef.current.id))) {
+          setMessages(prev => {
+            if (prev.some(m => m.id === incomingMsg.id)) return prev;
+            return [...prev, incomingMsg];
+          });
+          
+          fetch(`/api/chat/read/${activePartnerRef.current.id}`, { method: 'POST' }).catch(console.error);
+        }
+        
+        fetchRooms();
+      }
+    )
+    .on(
+      'postgres_changes',
+      { event: 'UPDATE', schema: 'public', table: 'chat_messages', filter: `sender_id=eq.${user.id}` },
+      (payload) => {
+        const updated = payload.new;
+        if (updated.is_read && activePartnerRef.current && activePartnerRef.current.id === updated.receiver_id) {
+          setMessages(prev => prev.map(m => m.id === updated.id ? { ...m, isRead: true } : m));
+        }
+        fetchRooms();
+      }
+    )
+    .subscribe((status) => {
+      if (status === 'SUBSCRIBED') {
         setIsConnected(true);
         setIsConnecting(false);
-        // Register current user session
-        ws.send(JSON.stringify({
-          type: 'join',
-          userId: user.id
-        }));
-        console.log('Chat WebSocket connected');
-      };
-
-      ws.onmessage = (event) => {
-        try {
-          const data = JSON.parse(event.data);
-          if (data.type === 'message') {
-            const incomingMsg: ChatMessage = data.message;
-            // Append to messages if it belongs to current active partner chat
-            if (activePartner && 
-               ((incomingMsg.senderId === activePartner.id && incomingMsg.receiverId === user.id) ||
-                (incomingMsg.senderId === user.id && incomingMsg.receiverId === activePartner.id))) {
-              setMessages(prev => {
-                if (prev.some(m => m.id === incomingMsg.id)) return prev;
-                return [...prev, incomingMsg];
-              });
-              // Mark as read immediately on server if active chat is open
-              ws.send(JSON.stringify({
-                type: 'read',
-                senderId: activePartner.id
-              }));
-            }
-            // Always refresh room previews
-            fetchRooms();
-          } else if (data.type === 'message_ack') {
-            const ackMsg: ChatMessage = data.message;
-            if (activePartner && ackMsg.receiverId === activePartner.id) {
-              setMessages(prev => {
-                if (prev.some(m => m.id === ackMsg.id)) return prev;
-                return [...prev, ackMsg];
-              });
-            }
-            fetchRooms();
-          } else if (data.type === 'messages_read') {
-            const readerId = data.readerId;
-            if (activePartner && activePartner.id === readerId) {
-              setMessages(prev => prev.map(m => m.receiverId === readerId ? { ...m, isRead: true } : m));
-            }
-            fetchRooms();
-          }
-        } catch (e) {
-          console.error('Error parsing WS message:', e);
-        }
-      };
-
-      ws.onclose = () => {
+      } else if (status === 'CLOSED' || status === 'CHANNEL_ERROR') {
         setIsConnected(false);
         setIsConnecting(false);
-        console.log('Chat WebSocket closed, reconnecting in 5s...');
         reconnectTimeoutRef.current = setTimeout(connectWebSocket, 5000);
-      };
-
-      ws.onerror = (err) => {
-        console.error('Chat WebSocket error:', err);
-        ws.close();
-      };
-    } catch (e) {
-      console.error('Failed to create WebSocket:', e);
-      setIsConnecting(false);
-      reconnectTimeoutRef.current = setTimeout(connectWebSocket, 5000);
-    }
+      }
+    });
   };
 
   // Connect on login/mount
@@ -194,9 +184,9 @@ export const ChatWidget: React.FC<ChatWidgetProps> = ({
       fetchDiscoverUsers();
     } else {
       // Disconnect if user logs out
-      if (socketRef.current) {
-        socketRef.current.close();
-        socketRef.current = null;
+      if (channelRef.current) {
+        supabase.removeChannel(channelRef.current);
+        channelRef.current = null;
       }
       setIsConnected(false);
       setRooms([]);
@@ -476,13 +466,6 @@ export const ChatWidget: React.FC<ChatWidgetProps> = ({
         setMessages(data.history);
         // Mark as read
         await fetch(`/api/chat/read/${partnerId}`, { method: 'POST' });
-        // Also tell WS server to notify partner
-        if (socketRef.current && socketRef.current.readyState === WebSocket.OPEN) {
-          socketRef.current.send(JSON.stringify({
-            type: 'read',
-            senderId: partnerId
-          }));
-        }
         // Refresh room badges
         fetchRooms();
       }
@@ -676,48 +659,35 @@ export const ChatWidget: React.FC<ChatWidgetProps> = ({
       return [...prev, optimisticMsg];
     });
 
-    // If WebSocket is active, send via WS
-    if (socketRef.current && socketRef.current.readyState === WebSocket.OPEN) {
-      socketRef.current.send(JSON.stringify({
-        type: 'message',
-        receiverId: activePartner.id,
-        receiverName: activePartner.name,
-        receiverAvatar: activePartner.avatar,
-        senderName: user.displayName || user.name,
-        senderAvatar: user.avatar,
+    try {
+      const dbPayload = {
+        id: tempId,
+        sender_id: user.id,
+        sender_name: user.displayName || user.name || "Kullanıcı",
+        sender_avatar: user.avatar,
+        receiver_id: activePartner.id,
+        receiver_name: activePartner.name,
+        receiver_avatar: activePartner.avatar,
         message: tempText,
-        mediaUrl: tempMedia?.url || undefined,
-        mediaType: tempMedia?.type || undefined
-      }));
-    } else {
-      // Fallback to HTTP POST
-      try {
-        const res = await fetch('/api/chat/message', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            receiverId: activePartner.id,
-            receiverName: activePartner.name,
-            receiverAvatar: activePartner.avatar,
-            message: tempText,
-            mediaUrl: tempMedia?.url || undefined,
-            mediaType: tempMedia?.type || undefined
-          })
-        });
-        const data = await safeJsonResponse(res);
-        if (data.success && data.message) {
-          fetchRooms();
+        created_at: optimisticMsg.createdAt,
+        is_read: false,
+        sender_has_rgb: user.has_rgb || false,
+        media_url: tempMedia?.url || null,
+        media_type: tempMedia?.type || null
+      };
+      
+      const { error } = await supabase.from('chat_messages').insert([dbPayload]);
+      if (error) console.error('Error inserting message to Supabase:', error);
+    } catch (err) {
+      console.error('Failed to send message:', err);
+    }
+
+    fetchRooms();
           // After 1.3s re-fetch history to pick up automated community response
-          setTimeout(() => {
-            fetchHistory(activePartner.id);
-          }, 1300);
-        }
-      } catch (e) {
-        console.error('Failed to send fallback message:', e);
-        // Re-add text/media so user doesn't lose it
-        setMessageText(tempText);
-        setAttachedMedia(tempMedia);
-      }
+    if (activePartner.id === 'community-bot') {
+      setTimeout(() => {
+        fetchHistory(activePartner.id);
+      }, 1300);
     }
   };
 

@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { Send, Globe, Users, MessageSquare, Loader2, User } from 'lucide-react';
 import { safeJsonResponse } from '../lib/api';
 import { ChatMessage } from '../types';
+import { supabase } from '../lib/supabase';
 
 interface GlobalChatProps {
   user: any;
@@ -15,7 +16,6 @@ export const GlobalChat: React.FC<GlobalChatProps> = ({ user, onAuthTrigger }) =
   const [isLoading, setIsLoading] = useState(false);
   const [onlineCount, setOnlineCount] = useState(0);
   const messagesEndRef = useRef<HTMLDivElement>(null);
-  const socketRef = useRef<WebSocket | null>(null);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -36,30 +36,61 @@ export const GlobalChat: React.FC<GlobalChatProps> = ({ user, onAuthTrigger }) =
       })
       .catch(console.error);
 
-    // WebSocket connection for global chat
-    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const socket = new WebSocket(`${protocol}//${window.location.host}`);
-    socketRef.current = socket;
+    // Supabase Realtime for global chat
+    const channel = supabase.channel('global_chat_room', {
+      config: {
+        presence: {
+          key: user?.id || 'guest',
+        },
+      },
+    });
 
-    socket.onopen = () => {
-      socket.send(JSON.stringify({ type: 'join_global', userId: user?.id || 'guest' }));
-    };
-
-    socket.onmessage = (event) => {
-      try {
-        const data = JSON.parse(event.data);
-        if (data.type === 'global_message') {
-          setMessages(prev => [...prev, data.message]);
-        } else if (data.type === 'presence_update') {
-          setOnlineCount(data.count);
+    channel
+      .on(
+        'postgres_changes',
+        { event: 'INSERT', schema: 'public', table: 'chat_messages', filter: "receiver_id=eq.global" },
+        (payload) => {
+          const newMsg = payload.new as any;
+          const formattedMsg: ChatMessage = {
+            id: newMsg.id,
+            senderId: newMsg.sender_id,
+            senderName: newMsg.sender_name,
+            senderAvatar: newMsg.sender_avatar,
+            receiverId: newMsg.receiver_id,
+            receiverName: newMsg.receiver_name,
+            message: newMsg.message,
+            createdAt: newMsg.created_at,
+            isRead: newMsg.is_read,
+            senderHasRgb: newMsg.sender_has_rgb,
+          };
+          setMessages(prev => {
+            // Prevent duplicates if we already added it optimistically
+            if (prev.some(m => m.id === formattedMsg.id)) return prev;
+            return [...prev, formattedMsg];
+          });
         }
-      } catch (e) {
-        console.error('WS Error:', e);
-      }
-    };
+      )
+      .on('presence', { event: 'sync' }, () => {
+        const state = channel.presenceState();
+        setOnlineCount(Object.keys(state).length);
+      })
+      .on('presence', { event: 'join' }, ({ key, newPresences }) => {
+        // Optional: handle join event
+      })
+      .on('presence', { event: 'leave' }, ({ key, leftPresences }) => {
+        // Optional: handle leave event
+      })
+      .subscribe(async (status) => {
+        if (status === 'SUBSCRIBED') {
+          await channel.track({
+            user_id: user?.id || 'guest',
+            online_at: new Date().toISOString(),
+          });
+        }
+      });
 
     return () => {
-      socket.close();
+      supabase.removeChannel(channel);
     };
   }, [user]);
 
@@ -70,14 +101,45 @@ export const GlobalChat: React.FC<GlobalChatProps> = ({ user, onAuthTrigger }) =
     const msgText = inputText;
     setInputText('');
 
-    if (socketRef.current?.readyState === WebSocket.OPEN) {
-      socketRef.current.send(JSON.stringify({
-        type: 'global_send',
-        message: msgText,
-        senderId: user.id,
-        senderName: user.name,
-        senderAvatar: user.avatar
-      }));
+    const newMsgId = `msg-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
+    const createdAt = new Date().toISOString();
+
+    const dbPayload = {
+      id: newMsgId,
+      sender_id: user.id,
+      sender_name: user.name,
+      sender_avatar: user.avatar,
+      receiver_id: 'global',
+      receiver_name: 'Global',
+      message: msgText,
+      created_at: createdAt,
+      is_read: false,
+      sender_has_rgb: user.has_rgb || false
+    };
+
+    // Optimistic UI Update
+    const optimisticMsg: ChatMessage = {
+      id: newMsgId,
+      senderId: user.id,
+      senderName: user.name,
+      senderAvatar: user.avatar,
+      receiverId: 'global',
+      receiverName: 'Global',
+      message: msgText,
+      createdAt,
+      isRead: false,
+      senderHasRgb: user.has_rgb || false
+    };
+    
+    setMessages(prev => [...prev, optimisticMsg]);
+
+    try {
+      const { error } = await supabase.from('chat_messages').insert([dbPayload]);
+      if (error) {
+        console.error('Error inserting message via Supabase:', error);
+      }
+    } catch (err) {
+      console.error('Error sending message:', err);
     }
   };
 
